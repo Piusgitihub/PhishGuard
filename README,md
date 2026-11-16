@@ -1,0 +1,18 @@
+# PhishGuard
+
+PhishGuard is a machine learning-based web application designed to detect phishing URLs.
+
+## Features
+- Phishing URL detection
+- Legitimate URL identification
+- Machine learning classification
+- Confidence score display
+
+## Technologies
+- Python
+- Flask
+- Scikit-learn
+- HTML and CSS
+
+## Purpose
+To help users identify suspicious URLs and reduce phishing-related risks.
