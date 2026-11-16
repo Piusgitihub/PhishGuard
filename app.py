@@ -237,7 +237,7 @@ def home():
     message = ""
     confidence = ""
     url = ""
-
+    features ={}
     if request.method == "POST":
         url = request.form.get("url", "").strip()
 
