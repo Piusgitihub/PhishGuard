@@ -281,7 +281,7 @@ def home():
         message=message,
         confidence=confidence,
         url=url,
-       url=url,
+       
 analysis_details=features,
 model_name=model_name 
     )
