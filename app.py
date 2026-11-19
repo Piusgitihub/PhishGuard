@@ -2,11 +2,32 @@ import pandas as pd
 import joblib
 import ipaddress
 from urllib.parse import urlparse
-from flask import Flask, request, render_template_string
-
+from flask import Flask, request, render_template_string, redirect, url_for
+from datetime import datetime
 app = Flask(__name__)
 
+
+import json
+import os
+
+HISTORY_FILE = "scan_history.json"
 # Load trained phishing detection model
+def save_scan(url, result, confidence):
+    history = []
+
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r") as file:
+            history = json.load(file)
+
+    history.append({
+        "url": url,
+        "result": result,
+        "confidence": confidence,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    })
+
+    with open(HISTORY_FILE, "w") as file:
+        json.dump(history, file, indent=4)
 bundle = joblib.load("phishing_model.joblib")
 model = bundle["model"]
 feature_names = bundle["feature_names"]
@@ -14,6 +35,7 @@ model_name = bundle["model_name"]
 
 
 def extract_url_features(url):
+    url = str(url).strip()
     if not url.startswith(("http://", "https://")):
         url = "http://" + url
 
@@ -51,7 +73,6 @@ def extract_url_features(url):
         "digit_count": sum(c.isdigit() for c in url),
         "subdomain_count": max(0, len(hostname.split(".")) - 2),
         "has_ip_address": has_ip,
-        "uses_https": int(parsed.scheme == "https"),
         "suspicious_word_count": sum(
             word in url.lower() for word in suspicious_words
         ),
@@ -149,9 +170,113 @@ footer {
     padding: 25px;
     font-size: 13px;
 }
+.history {
+    margin-top: 30px;
+    padding: 20px;
+    background: #f8fafc;
+    border-radius: 10px;
+}
+
+.history h2 {
+    margin-bottom: 15px;
+}
+
+.history-item {
+    padding: 12px;
+    margin-bottom: 10px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow-wrap: break-word;
+}
 @media(max-width:600px) {
     .info { grid-template-columns: 1fr; }
     .hero h1 { font-size: 27px; }
+}
+
+
+.stat-card {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    text-align: center;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin: 25px 0;
+    width: 100%;
+}
+
+.stat-card h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+}
+
+.stat-card p {
+    font-size: 28px;
+    font-weight: bold;
+    color: #16a34a;
+}
+</style>
+/* Scan Statistics Chart */
+.chart-section {
+    background: white;
+    padding: 25px;
+    margin: 25px 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+}
+
+.chart-section h2 {
+    margin-bottom: 20px;
+}
+
+.chart-row {
+    margin-bottom: 20px;
+}
+
+.chart-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.chart-track {
+    width: 100%;
+    height: 18px;
+    background: #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.chart-fill {
+    height: 100%;
+    border-radius: 10px;
+    transition:width 0.5s ease;
+}
+
+.phishing-fill {
+    background: #dc2626;
+}
+
+.legitimate-fill {
+    background: #16a34a;
+}
+.stat-card h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+}
+
+.stat-card p {
+    font-size: 28px;
+    font-weight: bold;
+    color: #16a34a;
 }
 </style>
 </head>
@@ -219,6 +344,69 @@ footer {
             URL-based Machine Learning
         </div>
     </section>
+<section class="history">
+    <h2>Recent Scan History</h2>
+    <form action="/clear-history" method="POST">
+    <button type="submit" onclick="return confirm('Are you sure you want to clear all scan history?')">
+        Clear Scan History
+    </button>
+</form>
+<div class="stats">
+    <div class="stat-card">
+        <h3>Total Scans</h3>
+        <p>{{ total_scans }}</p>
+    </div>
+
+    <div class="stat-card">
+        <h3>Phishing Scans</h3>
+        <p>{{ phishing_scans }}</p>
+    </div>
+
+    <div class="stat-card">
+        <h3>Legitimate Scans</h3>
+        <p>{{ legitimate_scans }}</p>
+    </div>
+</div><div class="chart-section">
+    <h2>Scan Distribution</h2>
+
+    <div class="chart-row">
+        <div class="chart-label">
+            <span>Phishing Scans</span>
+            <span>{{ phishing_scans }}</span>
+        </div>
+        <div class="chart-track">
+            <div class="chart-fill phishing-fill"
+                 style="width: {{ (phishing_scans / total_scans * 100) if total_scans > 0 else 0 }}%;"
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-row">
+        <div class="chart-label">
+            <span>Legitimate Scans</span>
+            <span>{{ legitimate_scans }}</span>
+        </div>
+        <div class="chart-track">
+            <div class="chart-fill legitimate-fill"
+                 style="width: {{ (legitimate_scans / total_scans * 100) if total_scans > 0 else 0 }}%;"
+            </div>
+        </div>
+    </div>
+</div>
+
+    {% if history %}
+        {% for item in history[-10:]|reverse %}
+            <div class="history-item">
+                <strong>{{ item.result }}</strong>
+                <p>{{ item.url }}</p>
+                <small>Confidence: {{ item.confidence }}</small>
+                <small>Scanned: {{ item.timestamp }}</small>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No scans yet.</p>
+    {% endif %}
+</section>
 </main>
 
 <footer>
@@ -230,6 +418,11 @@ footer {
 """
 
 
+@app.route("/clear-history", methods=["POST"])
+def clear_history():
+    if os.path.exists(HISTORY_FILE):
+        os.remove(HISTORY_FILE)
+    return redirect(url_for("home"))
 @app.route("/", methods=["GET", "POST"])
 def home():
     result = ""
@@ -248,6 +441,8 @@ def home():
         else:
             try:
                 features = extract_url_features(url)
+                print("INPUT URL:", repr(url))
+                print("EXTRACTED FEATURES:", features)
                 input_data = pd.DataFrame([features]).reindex(
                     columns=feature_names
                 )
@@ -273,8 +468,16 @@ def home():
                 result = "Analysis error"
                 result_class = "error"
                 message = "Unable to analyse this URL. Check the input."
-
-    return render_template_string(
+    if url and confidence:
+        save_scan(url, result, confidence)
+    history = []
+    if os.path.exists(HISTORY_FILE):
+     with open(HISTORY_FILE, "r") as file:
+        history = json.load(file)
+    total_scans = len(history)
+    phishing_scans = sum(1 for item in history if item["result"] == "WARNING: PHISHING URL")
+    legitimate_scans = sum(1 for item in history if item["result"] == "LEGITIMATE URL")
+    return render_template_string(    
         HTML,
         result=result,
         result_class=result_class,
@@ -283,7 +486,12 @@ def home():
         url=url,
        
 analysis_details=features,
-model_name=model_name 
+model_name=model_name,
+history=history,
+    
+total_scans=total_scans,
+phishing_scans=phishing_scans,
+legitimate_scans=legitimate_scans
     )
 
 

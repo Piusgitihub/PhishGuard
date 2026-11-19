@@ -68,8 +68,7 @@ def extract_url_features(url):
         has_port = 0
 
     return {
-        "url_length": len(url),
-        "hostname_length": len(hostname),
+        "url_length": len(parsed.netloc + parsed.path + ("?" + parsed.query if parsed.query else "")),
         "path_length": len(path),
         "query_length": len(query),
         "dot_count": url.count("."),
@@ -81,7 +80,6 @@ def extract_url_features(url):
         "digit_count": sum(c.isdigit() for c in url),
         "subdomain_count": max(0, len(hostname.split(".")) - 2),
         "has_ip_address": has_ip,
-        "uses_https": int(parsed.scheme == "https"),
         "suspicious_word_count": sum(
             word in url.lower() for word in suspicious_words
         ),
@@ -108,19 +106,41 @@ print("Legitimate records:", int((y == 0).sum()))
 # 3. SPLIT DATA: 70% TRAIN, 15% VALIDATION, 15% TEST
 print("\nSplitting dataset...")
 
-X_train, X_temp, y_train, y_temp = train_test_split(
-    X, y,
+# 3. SPLIT DATA BY DOMAIN: 70% TRAIN, 15% VALIDATION, 15% TEST
+
+groups = dataset["Domain"].astype(str)
+
+splitter = GroupShuffleSplit(
+    n_splits=1,
     test_size=0.30,
-    random_state=42,
-    stratify=y
+    random_state=42
 )
 
-X_val, X_test, y_val, y_test = train_test_split(
-    X_temp, y_temp,
+train_idx, temp_idx = next(splitter.split(X, y, groups))
+
+X_train = X.iloc[train_idx]
+y_train = y.iloc[train_idx]
+
+X_temp = X.iloc[temp_idx]
+y_temp = y.iloc[temp_idx]
+temp_groups = groups.iloc[temp_idx]
+
+splitter2 = GroupShuffleSplit(
+    n_splits=1,
     test_size=0.50,
-    random_state=42,
-    stratify=y_temp
+    random_state=42
 )
+
+val_idx, test_idx = next(
+    splitter2.split(X_temp, y_temp, temp_groups)
+)
+
+X_val = X_temp.iloc[val_idx]
+y_val = y_temp.iloc[val_idx]
+
+X_test = X_temp.iloc[test_idx]
+y_test = y_temp.iloc[test_idx]
+
 
 print("Training records:", len(X_train))
 print("Validation records:", len(X_val))
